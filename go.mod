@@ -1,1 +1,3 @@
-module "testModel"
+module "shopModels"
+
+go 1.14
