@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,12 +63,25 @@ func (s *Shop) GetGoods() (goods string, err error) {
 	defer s.mx.RUnlock()
 
 	for key, value := range s.goods.list {
-		goods = strings.Join([]string{goods, "<p>", value.name, ", ", value.unit," <a href=/order?order=", strconv.Itoa(int(key)), ">Купить</a></p><br>"}, "")
+		goods = strings.Join([]string{goods, "<p>", value.name, ", ", value.unit, " <a href=/order?order=", strconv.Itoa(int(key)), ">Купить</a></p><br>"}, "")
 	}
 	return
 }
 
+func (s *Shop) GetGood(goodID uint16) (good Good, ok bool) {
+	s.mx.RLock()
+	defer s.mx.RUnlock()
+
+	good, ok = s.goods.list[goodID]
+	if ok {
+		return
+	}
+
+	return good, false
+}
+
 type Good struct {
+	id    uint16
 	name  string
 	price uint64
 	unit  string
@@ -85,10 +99,48 @@ type Client struct {
 }
 
 type Order struct {
-	ClientID uint16
-	Basket   map[uint16]Good
+	OrderID uint32
+	*Client
+	*Basket
 }
 
-type Orders struct {
-	List []Order
+// количество = value, orderID = key
+type Basket struct {
+	mx   sync.RWMutex
+	list map[uint16]uint8
 }
+
+func (b *Basket) AddGood(goodID uint16, amount uint8) error {
+	b.mx.Lock()
+	defer b.mx.Unlock()
+
+	b.list[goodID] = amount
+
+	return nil
+}
+
+func GenOrderID() uint32 {
+	return rand.Uint32()
+}
+
+func (s *Shop) NewOrder(basket *Basket, client *Client) Order {
+	s.mx.RLock()
+	defer s.mx.RUnlock()
+
+	var (
+		ok      bool
+		orderID uint32
+	)
+
+	for {
+		orderID = GenOrderID()
+		_, ok = s.orders[orderID]
+		if !ok {
+			break
+		}
+	}
+
+	return Order{OrderID: orderID, Basket: basket, Client: client}
+}
+
+type Orders map[uint32]Order
